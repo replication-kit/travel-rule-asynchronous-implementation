@@ -62,7 +62,7 @@ pip install -r requirements.txt
 
 1. Install the required packages as described above.
 2. Navigate to the `src/` directory.
-3. Open any of the `.ipynb` files (e.g. `Figure1.ipynb`) in Jupyter Notebook
+3. Open any of the `.ipynb` files (e.g. `Figure2.ipynb`) in Jupyter Notebook
    or JupyterLab.
 4. Run all cells to reproduce the corresponding figure.
 
@@ -108,4 +108,5 @@ For questions regarding the code or the model, please contact:
 **[Masaki Yamaguchi]**  
 [Yamagata University]  
 [yamaguch@human.kj.yamagata-u.ac.jp]
+
 
