@@ -1,10 +1,5 @@
 # Asynchronous Implementation of the Travel Rule and Transitional Risks in Crypto-Asset Regulation
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18072587.svg)]
-(https://doi.org/10.5281/zenodo.18072587)
-
-GitHub repository: https://github.com/masaki-yamaguchi1/travel-rule-asynchronous-implementation
-
 This repository contains the Python simulation code used in the paper  
 **“Asynchronous Implementation of the Travel Rule and Transitional Risks in Crypto-Asset Regulation”**,  
 submitted to the *Journal of Financial Regulation*.
@@ -25,13 +20,13 @@ regulatory transition period.
   - `Figure3.ipynb`  
     Generates **Figure 3** (robustness analysis with respect to adoption delays
     and implementation speed).
-  - `Figure_B1_lambda.ipynb`  
+  - `Figure_B1.py`  
     Sensitivity analysis with respect to behavioral sensitivity (λ).
-  - `Figure_B2_F.ipynb`  
+  - `Figure_B2.py`  
     Sensitivity analysis with respect to sanction severity (F).
-  - `Figure_B3_kC.ipynb`  
+  - `Figure_B3.py`  
     Sensitivity analysis with respect to P2P transaction frictions.
-  - `Figure_B4_N.ipynb`  
+  - `Figure_B4.py`  
     Sensitivity analysis with respect to the number of agents (N).
 
 - `requirements.txt`  
@@ -57,22 +52,6 @@ To install dependencies, run:
 ```bash
 pip install -r requirements.txt
 ```
-
-## Running the simulations
-
-1. Install the required packages as described above.
-2. Navigate to the `src/` directory.
-3. Open any of the `.ipynb` files (e.g. `Figure2.ipynb`) in Jupyter Notebook
-   or JupyterLab.
-4. Run all cells to reproduce the corresponding figure.
-
-By default, each notebook uses a moderate number of Monte Carlo repetitions
-to ensure reasonable execution time.  
-Comments in the code indicate where the number of repetitions can be increased
-to reproduce the exact figures used in the final manuscript.
-
----
-
 ## Reproducibility and scope
 
 The code in this repository is intended to reproduce the qualitative and
@@ -101,12 +80,6 @@ Please cite the associated paper if you use or adapt the code in your own work.
 
 ---
 
-## Contact
 
-For questions regarding the code or the model, please contact:
-
-**[Masaki Yamaguchi]**  
-[Yamagata University]  
-[yamaguch@human.kj.yamagata-u.ac.jp]
 
 
