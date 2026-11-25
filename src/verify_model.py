@@ -10,10 +10,11 @@ The script verifies:
 2. The reduced steady-state equation.
 3. Stability of low / middle / high equilibria.
 4. The basin-boundary property of the unstable equilibrium.
-5. Lemma 2: when implementation asymmetry increases P2P maturity investment.
-6. Leader-versus-laggard comparative statics.
-7. A transition-path example in which two implementation histories converge
-   to the same terminal regulatory state but different long-run equilibria.
+5. Lemma 2: conditional maturity investment under fixed-average asymmetry.
+6. Leader-versus-laggard comparative statics and Proposition 3 derivatives.
+7. Fixed-weakest-link transition histories (fast leader vs synchronization).
+8. The critical leader exponent and the two equilibrium-selection regions.
+9. The no-hysteresis benchmark using the same updated transition paths.
 
 This is a verification script, not a calibration exercise.
 """
@@ -303,34 +304,74 @@ def scan_reduced_parameter_region(A_values: np.ndarray, B_values: np.ndarray) ->
     return counts
 
 
-def illustrative_transition_paths(T: int = 40) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def implementation_path(alpha: float, T: int = 40, initial: float = 0.20) -> np.ndarray:
+    """An implementation path e_t = initial + (1-initial)*(t/(T-1))**alpha.
+
+    Every admissible alpha > 0 starts at the same initial implementation
+    and reaches full implementation at the final transition date.
     """
-    Two monotone implementation histories with the same initial and terminal
-    regulatory states.  They are chosen only to illustrate Proposition 3.
+    if alpha <= 0 or T < 2 or not (0.0 <= initial < 1.0):
+        raise ValueError("Require alpha>0, T>=2, and 0<=initial<1.")
+    u = np.arange(T, dtype=float) / (T - 1)
+    return initial + (1.0 - initial) * u**alpha
 
-    History A: synchronized implementation.
-    History B: strong leader-laggard asymmetry followed by catch-up.
+
+def fixed_weakest_link_paths(
+    leader_alpha: float = 0.3, laggard_alpha: float = 3.0, T: int = 40,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return synchronized and fast-leader histories with identical weakest links.
+
+    Path S: both jurisdictions use laggard_alpha.
+    Path F: leader uses leader_alpha <= laggard_alpha, laggard unchanged.
     """
-    t = np.arange(T, dtype=float)
-    u = t / (T - 1)
+    if not 0 < leader_alpha <= laggard_alpha:
+        raise ValueError("Require 0 < leader_alpha <= laggard_alpha.")
+    laggard = implementation_path(laggard_alpha, T)
+    return laggard.copy(), laggard.copy(), implementation_path(leader_alpha, T), laggard.copy()
 
-    # History A: both jurisdictions move together.
-    sync = 0.20 + 0.80 * u**2.0
-    e1_A = sync.copy()
-    e2_A = sync.copy()
 
-    # History B: the leader reaches full implementation relatively early,
-    # while the laggard remains weak for longer and catches up near the end.
-    leader = np.minimum(1.0, 0.20 + 0.80 * t / max(0.50 * (T - 1), 1.0))
-    laggard = 0.20 + 0.80 * u**10.0
-    e1_B = leader
-    e2_B = laggard
+def final_maturity(leader_alpha: float, laggard_alpha: float, p0: float,
+                   par: Params, T: int = 40) -> float:
+    """p_T for the exponent pair; alpha_1 <= alpha_2 is the leader convention."""
+    if not 0 < leader_alpha <= laggard_alpha:
+        raise ValueError("Require 0 < leader_alpha <= laggard_alpha.")
+    e1 = implementation_path(leader_alpha, T)
+    e2 = implementation_path(laggard_alpha, T)
+    return float(simulate(e1, e2, p0, par)["p"][-1])
 
-    # Force an identical terminal state.
-    e1_A[-1] = e2_A[-1] = 1.0
-    e1_B[-1] = e2_B[-1] = 1.0
 
-    return e1_A, e2_A, e1_B, e2_B
+def critical_leader_exponent(
+    laggard_alpha: float, p0: float, p_threshold: float, par: Params,
+    T: int = 40, lower: float = 0.20,
+) -> float:
+    """Unique crossing p_T(alpha_1,alpha_2)=p_threshold, when bracketed.
+
+    Under the sufficient conditions of Proposition 3, p_T rises strictly
+    with leader exponent on the admissible interval alpha_1<=alpha_2.
+    """
+    if not 0 < lower < laggard_alpha:
+        raise ValueError("Require 0 < lower < laggard_alpha.")
+    f = lambda a: final_maturity(a, laggard_alpha, p0, par, T)-p_threshold
+    return bisection_root(f, lower, laggard_alpha, tol=1e-13)
+
+
+def analytical_dI_de1_fixed_weakest_link(e1: float, e2: float, p: float,
+                                         par: Params) -> float:
+    """Leader's impact on maturity investment, when e1>e2."""
+    if not e1 > e2:
+        raise ValueError("Requires a strictly leading jurisdiction 1.")
+    xC, xW, xP = shares(e1, e2, p, par)
+    return -par.tau*xP/(2.0*par.sigma) * (
+        par.thetaP*xC+(par.thetaP-par.thetaW)*xW
+    )
+
+
+def analytical_dF_dp(e1: float, e2: float, p: float, par: Params) -> float:
+    """Derivative of the one-period maturity update F with respect to p."""
+    xC, xW, xP = shares(e1, e2, p, par)
+    return (1.0-par.delta) + par.lam*xP/par.sigma * (
+        par.thetaP*xC+(par.thetaP-par.thetaW)*xW
+    )
 
 
 def no_hysteresis_control(par: Params) -> Params:
@@ -399,6 +440,19 @@ def main() -> None:
     assert abs(a1 - n1) < 1e-6
     assert abs(a2 - n2) < 1e-6
 
+    header("4a. Proposition 3: fixed-weakest-link derivatives")
+    dI_ana = analytical_dI_de1_fixed_weakest_link(e1, e2, p, par)
+    h = 1e-6
+    dI_num = (maturity_investment(e1+h,e2,p,par)
+              - maturity_investment(e1-h,e2,p,par))/(2*h)
+    dF_ana = analytical_dF_dp(e1,e2,p,par)
+    dF_num = (maturity_next(e1,e2,p+h,par)
+              - maturity_next(e1,e2,p-h,par))/(2*h)
+    print(f"dI/de_leader analytical={dI_ana:+.10e}, numerical={dI_num:+.10e}")
+    print(f"dF/dp analytical={dF_ana:+.10e}, numerical={dF_num:+.10e}")
+    assert abs(dI_ana-dI_num)<1e-8 and dI_ana<0
+    assert abs(dF_ana-dF_num)<1e-8 and dF_ana>0
+
     header("5. Basin-boundary verification")
     pL, pM, pH = p2["p"]
     eps = 1e-3
@@ -408,25 +462,47 @@ def main() -> None:
     print(f"start pM-eps -> {below['p'][-1]:.10f}")
     print(f"start pM+eps -> {above['p'][-1]:.10f}")
 
-    header("6. Transition-path hysteresis example")
+    header("6. Fixed-weakest-link transition paths and equilibrium selection")
     p0 = pL
-    e1_A, e2_A, e1_B, e2_B = illustrative_transition_paths(T=40)
-    histA = simulate(e1_A, e2_A, p0, par)
-    histB = simulate(e1_B, e2_B, p0, par)
-    pTA = histA["p"][-1]
-    pTB = histB["p"][-1]
-    tailA = post_implementation_tail(pTA, par, periods=2000)
-    tailB = post_implementation_tail(pTB, par, periods=2000)
-    print(f"initial p0={p0:.10f}, threshold pM={pM:.10f}")
-    print(f"history A: pT={pTA:.10f}, long-run={tailA['p'][-1]:.10f}")
-    print(f"history B: pT={pTB:.10f}, long-run={tailB['p'][-1]:.10f}")
-    opposite = (pTA < pM < pTB) or (pTB < pM < pTA)
-    print(f"opposite sides of basin boundary = {opposite}")
-    assert opposite
-    assert abs(tailA["p"][-1] - pL) < 1e-6
-    assert abs(tailB["p"][-1] - pH) < 1e-6
+    e1_S, e2_S, e1_F, e2_F = fixed_weakest_link_paths(
+        leader_alpha=0.3, laggard_alpha=3.0, T=40
+    )
+    hist_S = simulate(e1_S, e2_S, p0, par)
+    hist_F = simulate(e1_F, e2_F, p0, par)
+    pT_S = hist_S["p"][-1]
+    pT_F = hist_F["p"][-1]
+    assert np.allclose(np.minimum(e1_S,e2_S),np.minimum(e1_F,e2_F))
+    assert np.all(e1_F >= e1_S)  # Faster leader; laggard held fixed.
+    assert np.any(e1_F > e1_S)
+    assert np.isclose(e1_S[-1],1.0) and np.isclose(e1_F[-1],1.0)
+    tail_S = post_implementation_tail(pT_S, par, periods=2000)
+    tail_F = post_implementation_tail(pT_F, par, periods=2000)
+    print(f"p0={p0:.10f}; pM={pM:.10f}")
+    print(f"synchronized alpha=(3,3): pT={pT_S:.10f}, long-run={tail_S['p'][-1]:.10f}")
+    print(f"fast leader alpha=(0.3,3): pT={pT_F:.10f}, long-run={tail_F['p'][-1]:.10f}")
+    assert abs(pT_S-0.5180261096) < 1e-8
+    assert abs(pT_F-0.4632149059) < 1e-8
+    assert pT_F < pM < pT_S
+    assert abs(tail_S["p"][-1]-pH) < 1e-6
+    assert abs(tail_F["p"][-1]-pL) < 1e-6
 
-    header("7. No-hysteresis control (unique-equilibrium region)")
+    header("6a. Unique crossing and two-dimensional map checkpoints")
+    alpha_star = critical_leader_exponent(3.0,p0,pM,par)
+    print(f"critical alpha_1 for alpha_2=3: {alpha_star:.10f}")
+    assert abs(alpha_star-1.0330745622) < 1e-8
+    sample_a1 = [0.3,0.5,1.0,1.5,2.0,3.0]
+    sample_pT = [final_maturity(a1,3.0,p0,par) for a1 in sample_a1]
+    for a1,pT in zip(sample_a1,sample_pT):
+        print(f"leader_alpha={a1:.1f}, laggard_alpha=3.0: pT={pT:.10f}")
+    assert all(left<right for left,right in zip(sample_pT,sample_pT[1:]))
+    assert sample_pT[2]<pM<sample_pT[3]
+    for laggard_alpha in (2.8,3.0,3.2):
+        for leader_alpha in (0.2,0.3,0.5):
+            assert final_maturity(leader_alpha,laggard_alpha,p0,par)<pM
+        assert final_maturity(laggard_alpha,laggard_alpha,p0,par)>pM
+    print("Fixed-laggard ranking and local 2-D map checkpoints passed.")
+
+    header("7. No-hysteresis control (same updated paths)")
     par_u = no_hysteresis_control(par)
     u1 = verify_proposition_1(par_u)
     print(f"control B = {u1['B']:.10f}")
@@ -435,15 +511,15 @@ def main() -> None:
     assert u1["num_roots"] == 1
     x_u = u1["roots"][0]
     p_u = maturity_from_x(x_u, par_u)
-    histA_u = simulate(e1_A, e2_A, p0, par_u)
-    histB_u = simulate(e1_B, e2_B, p0, par_u)
-    tailA_u = post_implementation_tail(histA_u["p"][-1], par_u, periods=2000)
-    tailB_u = post_implementation_tail(histB_u["p"][-1], par_u, periods=2000)
+    hist_S_u = simulate(e1_S,e2_S,p0,par_u)
+    hist_F_u = simulate(e1_F,e2_F,p0,par_u)
+    tail_S_u = post_implementation_tail(hist_S_u["p"][-1],par_u,periods=2000)
+    tail_F_u = post_implementation_tail(hist_F_u["p"][-1],par_u,periods=2000)
     print(f"unique steady-state p = {p_u:.10f}")
-    print(f"history A long-run p = {tailA_u['p'][-1]:.10f}")
-    print(f"history B long-run p = {tailB_u['p'][-1]:.10f}")
-    assert abs(tailA_u["p"][-1] - p_u) < 1e-6
-    assert abs(tailB_u["p"][-1] - p_u) < 1e-6
+    print(f"synchronized long-run p = {tail_S_u['p'][-1]:.10f}")
+    print(f"fast-leader long-run p = {tail_F_u['p'][-1]:.10f}")
+    assert abs(tail_S_u["p"][-1] - p_u) < 1e-6
+    assert abs(tail_F_u["p"][-1] - p_u) < 1e-6
 
     header("8. Broad reduced-form parameter-region scan")
     A_values = np.linspace(-8.0, 3.0, 221)
